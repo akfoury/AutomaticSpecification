@@ -1,0 +1,514 @@
+<!DOCTYPE html>
+<html>
+	<meta content-type: "text/html"; charset="utf-8">
+    <head>
+        <style>
+		body::-webkit-scrollbar { display: none;  }
+		html, body { -ms-overflow-style: none; overflow: hidden; height: 100%; }
+		
+		.node circle {
+		  fill: #fff;
+		  stroke: steelblue;
+		  stroke-width: 3px;
+		}
+		
+		.node text {
+		  font: 12px sans-serif;
+		}
+		
+		.link {
+		  fill: none;
+		  stroke: #ccc;
+		  stroke-width: 2px;
+		}
+		
+		#data-load {
+			height: 5%;
+		}
+		
+		#drop-area {
+		   border: 1px solid blue;
+		   padding: 15px;
+		   margin-top:5px;
+		   width: 35%;
+		   display:inline-block;
+		}
+		
+		#query_name {
+			width: 55%;
+			display: inline-block;
+			margin: 16px;
+			width: 55%;
+			padding: 8px;
+		}
+		
+		
+		#graph {
+			margin: 0;
+			padding: 0;
+			height: 45%;
+		}
+		
+		.tableFixHead          { overflow-y: auto; height: 55%; }
+		.tableFixHead thead th { position: sticky; top: 0; }
+		#th0 { width: 10%;}
+		#th1, #th2 { width: 45%}
+		
+		 th { background:#eee; }
+
+		table  { border-collapse: collapse; width: 100%; font-size: 12px; }
+		
+		@media print {
+		.hide {display: none!important;}
+		}
+		</style>
+    </head>
+    <body>
+	<div id="data-load">
+    <div id="drop-area" class="hide" ondragover="dragoverHandler(event)" ondrop="dropHandler(event)">
+        Glissez votre fichier ici
+	</div>
+		<input type="text" id="query_name" class="hide" list="queryName" placeholder="Taper le nom de votre requête" onchange="showTreeNode(window.localStorage.getItem('data'), this.value)"></input>
+	</div>
+		<div id="graph"></div>
+		<div id="table-div" class="tableFixHead"></div>
+	<script src="https://d3js.org/d3.v5.min.js"></script>
+     <link rel="stylesheet" href="https://stackpath.bootstrapcdn.com/bootstrap/4.3.1/css/bootstrap.min.css" integrity="sha384-ggOyR0iXCbMQv3Xipma34MD+dH/1fQ784/j6cY/iJTQUOhcWr7x9JvoRxT2MZw1T" crossorigin="anonymous">
+    <script src="https://ajax.googleapis.com/ajax/libs/jquery/3.5.1/jquery.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jqueryui/1.12.1/jquery-ui.js" type="text/javascript"></script>    
+	<script charset="utf-8">			
+		var query_name = document.getElementById("query_name").value
+	
+		function dropHandler(evt) {
+			evt.stopPropagation();
+			evt.preventDefault();
+		 
+			// FileList object.
+			var files = evt.dataTransfer.files;
+		 
+			if (files.length > 3) {
+				console.log("Please drag and drop 2 file!");
+				return;
+			}
+
+			if (files[0].name == "QueryName.txt" && files.length == 1) {
+				processQueryName(files[0], query_name);
+			}
+			else if (files[0].name == "Table.txt" && files.length == 1) {
+				processTable(files[0]);
+			}
+			else {
+				var table_data = processTable(files[0]);
+				processQueryName(files[1], query_name);
+			}			
+		}
+	
+		function dragoverHandler(evt) {
+			evt.stopPropagation();
+			evt.preventDefault();
+			// Explicitly show this is a copy.
+			evt.dataTransfer.dropEffect = 'copy';
+		}
+		
+		function processQueryName(file, query_name) {
+				var fileReader = new FileReader();
+				fileReader.onload = function(progressEvent) {
+					window.localStorage.setItem('data', progressEvent.target.result);
+					var kpiNames = listOfKpiNames(progressEvent.target.result);
+					fillDataList(kpiNames);
+					showTreeNode(progressEvent.target.result, query_name); 
+				}
+			fileReader.readAsText(file, "UTF-8"); 
+		}
+		
+		function generateTable(myArray) {
+				myArray = [...new Set(myArray)];
+				var table_data = '<table class="table table-bordered table-striped">';
+				table_data += '<thead>';
+				table_data += '<tr>';
+				for (var row_count = 0; row_count < myArray.length; row_count++) {
+					if (row_count == 0) {
+						for (var cell_count = 0; cell_count < myArray[0].length; cell_count++) {
+							table_data += "<th id='th" + cell_count + "'>" + myArray[row_count][cell_count] + "</th>";
+						}
+						table_data += '</tr>';
+						table_data += '</thead>';	
+					}
+					else {
+						table_data += '<tr>';
+						for (var cell_count = 0; cell_count < myArray[0].length; cell_count++) {
+							table_data += '<td>' + myArray[row_count][cell_count] + '</dh>';
+						}
+						table_data += '</tr>';
+					}
+				}
+				table_data += '</table>';
+				$('#table-div').html(table_data);
+				$("#table-div tbody").sortable();
+		}
+		
+		function processTable(file) {
+		
+			const fileReader3 = new FileReader()
+			fileReader3.onload = function (progressEvent) {
+			
+				var delimiter = "|";
+				var myArray = parseLine(progressEvent.target.result, delimiter);
+				window.localStorage.setItem('queryNameList', JSON.stringify(myArray));
+				
+				generateTable(myArray);
+			}
+			fileReader3.readAsText(file);	
+		}
+		
+				
+		function parseLine(txt, delimiter) {
+			let lines = txt.split(/[\r\n]+/);
+			let myArray = []
+			for (let i = 0; i < lines.length; i++) {
+				lines[i] = lines[i].split(delimiter);
+				myArray.push(lines[i]);
+			}
+			return myArray
+		}
+		
+		function listOfKpiNames(txt) {
+			let lines = txt.split(/[\r\n]+/);
+			let myArray = []
+			for (let i = 0; i < lines.length; i++) {
+				lines[i] = lines[i].split(",");
+				lines[i] = lines[i][0];
+				myArray.push(lines[i]);
+			}
+			let unique = [...new Set(myArray)];
+			return unique
+		}
+		
+		
+		function fillDataList(kpiNames) {
+			var container = document.getElementById('query_name'),
+			i = 0,
+			len = kpiNames.length,
+			dl = document.createElement('datalist');
+
+			dl.id = 'queryName';
+			for (; i < len; i += 1) {
+				var option = document.createElement('option');
+				option.value = kpiNames[i];
+				dl.appendChild(option);
+			}
+			container.appendChild(dl);
+		}
+				
+		function showTreeNode(result, query_name) {
+			d3.select("svg").remove();
+			
+			var delimiter = "|";
+			let data = parseLine(result, delimiter);
+			data = [].concat(...data);
+			data = data.filter(str => str.includes(query_name));
+			
+			var arrayToTree = (finalArray, currentArray) => {
+			  var node
+
+			  currentArray.forEach((name, index) => {
+				const children = index === 0 ? finalArray : node['children']
+				let newNode = children.find(child => child.name === name)
+
+				if (!newNode) {
+				  newNode = {
+					name,
+					...(
+					  index < currentArray.length - 1
+					  ? { children: [] }
+					  : {}
+					)
+				  }
+
+				  children.push(newNode)
+				}
+
+				node = newNode
+			  })
+
+			  return finalArray
+			}
+
+			var finalResult = data.map(row => row.split(",")).reduce(arrayToTree, [])
+			var result = finalResult[0]
+	
+			var margin = {top: 20, right: 10, bottom: 30, left: 300},
+				width = document.getElementById('graph').getBoundingClientRect().width,
+				height = document.getElementById('graph').getBoundingClientRect().height;
+			
+			svg = d3.select("#graph")
+				.append("svg")
+				.attr("width", width)
+				.attr("height", height)
+				 .call(d3.zoom().scaleExtent([0.4, 1.1]).on("zoom", function () {
+					svg.attr("transform", d3.event.transform);
+				 }))
+				.append("g")
+					.attr('id', 'tree')
+					.attr("transform", "translate(" + margin.left + "," + margin.top + ")");
+					
+					
+			var i = 0,
+				duration = 750,
+				root;
+
+			// declares a tree layout and assigns the size
+			var tree = d3.tree().size([height, width]);
+
+			// Assigns parent, children, height, depth
+			root = d3.hierarchy(result, function(d) { return d.children; });
+			root.x0 = height / 2;
+			root.y0 = 0;
+
+			// Collapse after the second level
+			root.children.forEach(collapse);
+			update(root);
+
+			// Collapse the node and all it's children
+			function collapse(d) {
+			  if(d.children) {
+				d._children = d.children
+				d._children.forEach(collapse)
+				d.children = null
+			  }
+			}
+			
+			function getDepth(root) {
+			  if (!root) {
+				return 0
+			  }
+			  let expandChildren = [0]
+			  if (root.children) { // if has expanded children
+				expandChildren = root.children.map(ea => getDepth(ea))
+			  }
+			  const max = expandChildren.reduce((a, b) => Math.max(a,b))
+			  return 1 + max
+			}
+
+			function update(source) {
+			  var currentDepth = getDepth(root);
+			  var newWidth = window.innerWidth;
+
+			  // Assigns the x and y position for the nodes
+			  var treeData = tree(root);
+
+			  // Compute the new tree layout.
+			  var nodes = treeData.descendants(),
+				  links = treeData.descendants().slice(1);
+
+			  // Normalize for fixed-depth.
+				nodes.forEach(function(d){ d.y = d.depth * window.innerWidth / (currentDepth+ Math.log(currentDepth-1))});
+				
+
+			  // ****************** Nodes section ***************************
+				function getData(d) {
+					raw_content = d._parents[0].textContent;
+					transform_content = raw_content.replace(/RQ_/g, "|RQ_");
+					transform_content = transform_content.replace(/Tab/g, "|Tab");
+					transform_content = transform_content.replace(/TAB/g, "|TAB");
+					transform_content = transform_content.replace(/Data/g, "|Data");
+					transform_content = transform_content.split("|");
+
+					
+					var tableList = JSON.parse(window.localStorage.getItem('queryNameList'));
+					var queryNameCol = tableList.map(function(value,index) { return value[0]});
+					
+					var filteredTableList = [];
+					filteredTableList.push(tableList[0]);
+					for (var j=0; j<d._groups[0].length; j++) {
+						for (var i=0; i<queryNameCol.length; i++) {
+							if(transform_content[j] == tableList[i][0]) {
+								filteredTableList.push(tableList[i]);
+							}
+						}
+					}
+					generateTable(filteredTableList);
+				}
+
+			  // Update the nodes...
+			  var node = svg.selectAll('g.node')
+				  .data(nodes, function(d) {return d.id || (d.id = ++i); });
+
+			  // Enter any new modes at the parent's previous position.
+			  var nodeEnter = node.enter().append('g')
+				  .attr('class', 'node')
+				  .attr("transform", function(d) {
+					return "translate(" + source.y0 + "," + source.x0 + ")";
+				})
+				.on('click', click);
+				
+				
+			  // Add Circle for the nodes
+			  nodeEnter.append('circle')
+				  .attr('class', 'node')
+				  .attr('r', 1e-6)
+				  .style("fill", function(d) {
+					  return d._children ? "lightsteelblue" : "#fff";
+				  });
+
+			  // Add labels for the nodes
+			  nodeEnter.append('text')
+				  .attr("dy", "2.35em")
+				  .attr("x", function(d) {
+					  return d.children || d._children ? 13 : 18;
+				  })
+				  .attr("text-anchor", function(d) {
+					  return d.children || d._children ? "end" : "start";
+				  })
+				  .text(function(d) { return d.data.name; })
+				  .style("font-weight", "bold")
+				  .call(getData);
+
+			  // UPDATE
+			  var nodeUpdate = nodeEnter.merge(node);
+
+			  // Transition to the proper position for the node
+			  nodeUpdate.transition()
+				.duration(duration)
+				.attr("transform", function(d) { 
+					return "translate(" + d.y + "," + d.x + ")";
+				 });
+
+			  // Update the node attributes and style
+			  nodeUpdate.select('circle.node')
+				.attr('r', 10)
+				.style("fill", function(d) {
+					return d._children ? "lightsteelblue" : "#fff";
+				})
+				.attr('cursor', 'pointer');
+				
+				nodeUpdate.select("text").style("fill-opacity", 1);
+				
+				nodeUpdate.select("text")	
+					.text(function (d) {
+					return d.data.name;
+				}).call(wrap, 175);
+
+
+			  // Remove any exiting nodes
+			  var nodeExit = node.exit().transition()
+				  .duration(duration)
+				  .attr("transform", function(d) {
+					  return "translate(" + source.y + "," + source.x + ")";
+				  })
+				  .remove();
+
+			  // On exit reduce the node circles size to 0
+			  nodeExit.select('circle')
+				.attr('r', 1e-6);
+
+			  // On exit reduce the opacity of text labels
+			  nodeExit.select('text')
+				.style('fill-opacity', 1e-6);
+
+			  // ****************** links section ***************************
+
+			  // Update the links...
+			  var link = svg.selectAll('path.link')
+				  .data(links, function(d) { return d.id; })
+
+			  // Enter any new links at the parent's previous position.
+			  var linkEnter = link.enter().insert('path', "g")
+				  .attr("class", "link")
+				  .attr('d', function(d){
+					var o = {x: source.x0, y: source.y0}
+					return diagonal(o, o)
+				  })
+				  .style("stroke", "#57bdc3");
+
+			  // UPDATE
+			  var linkUpdate = linkEnter.merge(link);
+
+			  // Transition back to the parent element position
+			  linkUpdate.transition()
+				  .duration(duration)
+				  .attr('d', function(d){ return diagonal(d, d.parent) });
+
+			  // Remove any exiting links
+			  var linkExit = link.exit().transition()
+				  .duration(duration)
+				  .attr('d', function(d) {
+					var o = {x: source.x, y: source.y}
+					return diagonal(o, o)
+				  })
+				  .remove();
+
+			  // Store the old positions for transition.
+			  nodes.forEach(function(d){
+				d.x0 = d.x;
+				d.y0 = d.y;
+			  });
+
+			  // Creates a curved (diagonal) path from parent to the child nodes
+			  function diagonal(s, d) {
+
+				path = `M ${s.y} ${s.x}
+						C ${(s.y + d.y) / 2} ${s.x},
+						  ${(s.y + d.y) / 2} ${d.x},
+						  ${d.y} ${d.x}`
+
+				return path
+			  }
+
+			  // Toggle children on click.
+			  function click(d) {
+				if (d.children) {
+					d._children = d.children;
+					d.children = null;
+				  } else {
+					d.children = d._children;
+					d._children = null;
+				  }
+				update(d);
+			  }
+			  
+				function wrap(text, width) {
+					text.each(function () {
+						var text = d3.select(this),
+							words = text.text().split("_").reverse(),
+							word,
+							line = [],
+							lineNumber = 0,
+							lineHeight = 1.1,
+							x = text.attr("x"),
+							y = text.attr("y"),
+							dy = -0.002, 
+							dy2 = 2,
+							tspan = text.text(null)
+										.append("tspan")
+										.attr("x", x)
+										.attr("y", y)
+										.attr("dy", dy2 + "em");
+						while (word = words.pop()) {
+							line.push(word);
+							tspan.text(line.join("_"));
+							if (tspan.node().getComputedTextLength() > width) {
+								line.pop();
+								tspan.text(line.join("_"));
+								line = ["_" + word];
+								tspan = text.append("tspan")
+											.attr("x", x)
+											.attr("y", y)
+											.attr("dy", ++lineNumber * lineHeight + dy + "em")
+											.text("_" + word);
+							}
+						}
+					});
+				}
+			}
+			<!-- let graph = document.querySelector("svg > g"); -->
+			<!-- let svg = document.querySelector("svg"); -->
+			<!-- graph.setAttribute('pointer-events', 'visiblePoint'); -->
+			<!-- svg.setAttribute('pointer-events', 'visiblePoint'); -->
+			<!-- graph.addEventListener('click', function(event) { -->
+				<!-- console.log(event.target); -->
+			<!-- }) -->
+		}
+	</script>
+	</body>
+</html>

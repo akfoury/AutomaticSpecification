@@ -1,0 +1,232 @@
+Option Explicit
+Private Sub MyQueryDefs()
+
+    Dim db As DAO.Database
+    Dim qdf As DAO.QueryDef
+    Dim tbl As DAO.TableDef
+    Dim strQuery As String
+    Dim strTables As String
+    Dim strEmpty As String
+    
+    Set db = CurrentDb
+    strEmpty = ""
+
+    DoCmd.SetWarnings False
+    
+    DoCmd.RunSQL ("DELETE * FROM MyQueryDef")
+    
+    For Each tbl In db.TableDefs
+            strTables = "INSERT INTO MyQueryDef (query_name, query_sql) values ('" & tbl.Name & "', '" & strEmpty & "')"
+            DoCmd.RunSQL (strTables)
+    Next
+    
+    For Each qdf In db.QueryDefs
+        If InStr(1, qdf.SQL, "FROM") > 0 Then
+            strQuery = "INSERT INTO MyQueryDef (query_name, query_sql) values ('" & qdf.Name & "', '" & Split(Replace(Replace(qdf.SQL, "'", "''", vbTextCompare), vbCrLf, " ", vbTextCompare), "FROM")(1) & "')"
+        Else
+            strQuery = "INSERT INTO MyQueryDef (query_name, query_sql) values ('" & qdf.Name & "', '" & Replace(Replace(qdf.SQL, "'", "''", vbTextCompare), vbCrLf, " ") & "')"
+        End If
+        DoCmd.RunSQL (strQuery)
+    Next
+    
+    DoCmd.SetWarnings True
+    Set db = Nothing
+End Sub
+
+
+Sub ParentChild()
+    Dim recordset1 As Recordset
+    Dim recordset2 As Recordset
+    Dim newRecord As Recordset
+    Dim query_name As String
+    Dim query_sql As String
+    
+    DoCmd.RunSQL ("DELETE * FROM ParentChildID")
+    
+    Set recordset1 = CurrentDb.OpenRecordset("MyQueryDef")
+    While Not recordset1.EOF
+        query_name = recordset1.Fields("query_name").Value
+        Set recordset2 = CurrentDb.OpenRecordset("MyQueryDef")
+        While Not recordset2.EOF
+            query_sql = recordset2.Fields("query_sql").Value
+            If InStr(1, query_sql, query_name & " ", vbTextCompare) > 0 Then
+                Set newRecord = CurrentDb.OpenRecordset("ParentChildID")
+                newRecord.AddNew
+                'Affecte les différents champs
+                newRecord.Fields("child_id").Value = recordset1.Fields("N°").Value
+                newRecord.Fields("child_query_name").Value = recordset1.Fields("query_name").Value
+                newRecord.Fields("parent_query_name").Value = recordset2.Fields("query_name").Value
+                'Met à Jour
+                newRecord.Update
+                'Libération des objets
+                newRecord.Close
+                Set newRecord = Nothing
+            End If
+            recordset2.MoveNext
+        Wend
+        recordset1.MoveNext
+    Wend
+    recordset1.Close
+    recordset2.Close
+    
+    Set recordset1 = Nothing
+    Set recordset2 = Nothing
+    MsgBox "Le jeu d'enregistrements est vide"
+End Sub
+
+Sub Main()
+    Dim kpiRecordSet As Recordset
+    Dim strSearch As String
+    Dim sqlStr As String
+    Dim fileName1 As String
+    Dim path1 As String
+    Dim oFS1 As Object
+    Dim oTxt1 As Object
+    
+    Set oFS1 = CreateObject("Scripting.Filesystemobject")
+
+   fileName1 = "QueryName.txt"
+   path1 = "C:\Users\Fujitsu\Documents\D3\"
+
+   Set oTxt1 = oFS1.OpenTextFile(path1 & fileName1, 2)
+   oTxt1.Write ("")
+   
+   oTxt1.Close
+   Set oFS1 = Nothing
+   Set oTxt1 = Nothing
+    
+    strSearch = "KPI_"
+    sqlStr = "SELECT DISTINCT parent_query_name FROM ParentRoot WHERE parent_query_name LIKE '" & strSearch & "*'"
+    
+    Set kpiRecordSet = CurrentDb.OpenRecordset(sqlStr, dbOpenDynaset)
+    
+    'Verification du nb d'\enregistrement du recordset
+    'Debug.Print (kpiRecordSet.RecordCount)
+    
+    kpiRecordSet.FindFirst ("parent_query_name LIKE '" & strSearch & "*'")
+    Do While Not kpiRecordSet.NoMatch
+        finalAlgo (kpiRecordSet("parent_query_name").Value)
+        kpiRecordSet.FindNext ("parent_query_name LIKE '" & strSearch & "*'")
+    Loop
+    kpiRecordSet.Close
+    Set kpiRecordSet = Nothing
+End Sub
+Sub finalAlgo(rootQuery As String)
+    Dim rst As Recordset
+    Dim strArray() As maLigne
+    Dim racine As maLigne
+    Dim lastValue As String
+    Dim child As String
+    Dim fileName2 As String
+    Dim path2 As String
+    Dim oFS2 As Object
+    Dim oTxt2 As Object
+    Dim i As Integer
+    Dim j As Integer
+    Dim k As Integer
+    Dim l As Integer
+    
+   ReDim Preserve strArray(0)
+    ReDim Preserve strArray(0).myList(0)
+    strArray(0).myList(0) = rootQuery
+    
+    i = 0
+    Do While i <= UBound(strArray)
+        racine.myList = strArray(i).myList
+        lastValue = racine.myList(UBound(racine.myList))
+
+        Set rst = CurrentDb.OpenRecordset("ParentRoot")
+        
+        rst.FindFirst ("parent_query_name = '" & lastValue & "'")
+
+        Do While Not rst.NoMatch
+            child = rst("child_query_name").Value
+            ReDim Preserve strArray(UBound(strArray) + 1)
+            strArray(UBound(strArray)).myList = racine.myList
+            ReDim Preserve strArray(UBound(strArray)).myList(UBound(strArray(UBound(strArray)).myList) + 1)
+            strArray(UBound(strArray)).myList(UBound(strArray(UBound(strArray)).myList)) = child
+            
+            Erase strArray(i).myList
+            
+            rst.FindNext ("parent_query_name = '" & lastValue & "'")
+        Loop
+        i = i + 1
+   Loop
+   Set oFS2 = CreateObject("Scripting.Filesystemobject")
+
+   fileName2 = "QueryName.txt"
+   path2 = "C:\Users\Fujitsu\Documents\D3\"
+
+   Set oTxt2 = oFS2.OpenTextFile(path2 & fileName2, 8)
+   For j = 0 To UBound(strArray)
+        If Join(strArray(j).myList) <> "" Then
+            For k = 0 To UBound(strArray(j).myList)
+                If (k = UBound(strArray(j).myList)) Then
+                    oTxt2.Write (strArray(j).myList(k))
+                Else
+                    oTxt2.Write (strArray(j).myList(k) & ",")
+                End If
+            Next
+        oTxt2.Write (Chr(13))
+        End If
+   Next
+   oTxt2.Close
+   Set oFS2 = Nothing
+   Set oTxt2 = Nothing
+End Sub
+
+Sub sqlQueryFileText()
+    Dim rst As Recordset
+    Dim fileName As String
+    Dim path As String
+    Dim oFS As Object
+    Dim oTxt As Object
+    
+    Set oFS = CreateObject("Scripting.Filesystemobject")
+
+    fileName = "QueryDef.txt"
+    path = "C:\Users\Fujitsu\Documents\D3\"
+    
+    Set oTxt = oFS.CreateTextFile(path & fileName)
+    
+    Set rst = CurrentDb.OpenRecordset("MyQueryDef")
+    
+    rst.MoveFirst
+    Do While Not rst.NoMatch
+        If Len(rst("query_sql").Value) > 0 Then
+            oTxt.Write (rst("query_sql").Value)
+            rst.MoveNext
+        Else
+            rst.MoveNext
+        End If
+    Loop
+    rst.Close
+    oTxt.Close
+    Set oFS = Nothing
+    Set txtFile = Nothing
+End Sub
+Private Sub QDFContent()
+
+    Dim db As DAO.Database
+    Dim qdf As DAO.QueryDef
+    Dim strEmpty As String
+    
+    strEmpty = ""
+    
+    Set db = CurrentDb
+
+    DoCmd.SetWarnings False
+    
+    DoCmd.RunSQL ("DELETE * FROM SQLContent")
+    
+    For Each qdf In db.QueryDefs
+            strQuery = "INSERT INTO SQLContent (querysql, queryname) values ('" & qdf.SQL & "', '" & strEmpty & "')"
+            DoCmd.RunSQL (strQuery)
+    Next
+    
+    DoCmd.SetWarnings True
+    Set db = Nothing
+End Sub
+
+
+
